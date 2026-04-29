@@ -122,6 +122,8 @@ const BirdIDApp = () => {
   const [confidenceFilter, setConfidenceFilter] = useState('all');
   const [birds, setBirds] = useState([]);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [audioError, setAudioError] = useState(false);
 
   const families = ['all', ...new Set(allBirds.map(b => b.family))].sort();
   const difficulties = ['all', 'easy', 'medium', 'hard'];
@@ -166,7 +168,38 @@ const BirdIDApp = () => {
   const playAudio = async () => {
     if (!currentBird || isPlaying) return;
     setIsPlaying(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    setAudioError(false);
+    
+    try {
+      // Query xeno-canto API for recordings of this bird
+      const response = await fetch(
+        `https://xeno-canto.org/api/2/recordings?query=${encodeURIComponent(currentBird.name)}&limit=1`
+      );
+      const data = await response.json();
+      
+      if (data.recordings && data.recordings.length > 0) {
+        const recording = data.recordings[0];
+        const audioUrl = recording.file;
+        
+        // Play the audio
+        const audio = new Audio(audioUrl);
+        audio.play().catch(() => {
+          setAudioError(true);
+        });
+        
+        // Wait for audio to finish or timeout
+        await new Promise(resolve => {
+          audio.onended = resolve;
+          setTimeout(resolve, 30000); // 30 second timeout
+        });
+      } else {
+        setAudioError(true);
+      }
+    } catch (error) {
+      setAudioError(true);
+      console.error('Error fetching audio:', error);
+    }
+    
     setIsPlaying(false);
   };
 
@@ -384,11 +417,16 @@ const BirdIDApp = () => {
                 <div className="relative flex flex-col items-center justify-center h-full">
                   <Volume2 size={48} className="mb-2" />
                   <span className="text-xs font-semibold uppercase tracking-wider">
-                    {isPlaying ? 'Playing...' : 'Play Call'}
+                    {isPlaying ? 'Loading...' : audioError ? 'Try Again' : 'Play Call'}
                   </span>
                 </div>
               </button>
             </div>
+            {audioError && (
+              <p className="text-center text-sm text-red-600 mb-4">
+                Couldn't load audio. Check your internet connection.
+              </p>
+            )}
 
             {/* Answer Section */}
             <div className="text-center mb-8">
